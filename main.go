@@ -7,13 +7,11 @@ import (
 	"log"
 	"net/http"
 	"reflect"
-	"sync"
 
 	"github.com/gorilla/mux"
 )
 
 func main() {
-	var wg sync.WaitGroup
 
 	segmentMockServer := mux.NewRouter()
 	segmentMockServer.HandleFunc("/", segmentMockHandler)
@@ -23,18 +21,11 @@ func main() {
 	req.HandleFunc("/expected", expectationHandler).Methods("POST")
 
 	go func() {
-		wg.Add(1)
-		defer wg.Done()
 		log.Println(http.ListenAndServe(":8001", segmentMockServer))
 	}()
 
-	go func() {
-		wg.Add(1)
-		defer wg.Done()
-		log.Println(http.ListenAndServe(":8002", req))
-	}()
+	log.Println(http.ListenAndServe(":8002", req))
 
-	wg.Wait()
 }
 
 type request struct {
