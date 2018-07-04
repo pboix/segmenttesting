@@ -1,36 +1,71 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"reflect"
+	"sync"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
+	var wg sync.WaitGroup
 
-	var expectedJSON, actualJSON []byte
-	var err error
-	http.HandleFunc("/application-payload", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			if expectedJSON, err = ioutil.ReadAll(r.Body); err != nil {
-				log.Fatal(err)
-			}
-		}
-	})
+	segmentMockServer := mux.NewRouter()
+	segmentMockServer.HandleFunc("/", segmentMockHandler)
 
-	http.HandleFunc("/expected-payload", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			if actualJSON, err = ioutil.ReadAll(r.Body); err != nil {
-				log.Fatal(err)
-			}
-			eq := reflect.DeepEqual(expectedJSON, actualJSON)
-			fmt.Println(eq)
+	req := mux.NewRouter()
+	req.HandleFunc("/assert", assertionHandler).Methods("GET")
+	req.HandleFunc("/expected", expectationHandler).Methods("POST")
 
-		}
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		log.Println(http.ListenAndServe(":8001", segmentMockServer))
+	}()
 
-	})
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		log.Println(http.ListenAndServe(":8002", req))
+	}()
 
-	http.ListenAndServe(":6000", nil)
+	wg.Wait()
+}
+
+type request struct {
+	Path   string `json:"path"`
+	Method string `json:"method"`
+	Body   string `json:"body"`
+}
+
+var expected, actual request
+var err error
+
+func assertionHandler(w http.ResponseWriter, r *http.Request) {
+	eq := reflect.DeepEqual(expected, actual)
+	fmt.Println(eq)
+}
+
+func expectationHandler(w http.ResponseWriter, r *http.Request) {
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	if err := dec.Decode(&expected); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+}
+
+func segmentMockHandler(w http.ResponseWriter, r *http.Request) {
+	actual.Path = r.URL.Path
+	actual.Method = r.Method
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	actual.Body = string(body)
 }
