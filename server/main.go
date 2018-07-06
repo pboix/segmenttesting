@@ -14,7 +14,7 @@ import (
 func main() {
 
 	segmentMockServer := mux.NewRouter()
-	segmentMockServer.HandleFunc("/", segmentMockHandler)
+	segmentMockServer.HandleFunc("/", segmentMockHandler).Methods("POST")
 
 	req := mux.NewRouter()
 	req.HandleFunc("/assert", assertionHandler).Methods("GET")
